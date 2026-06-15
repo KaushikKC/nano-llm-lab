@@ -71,7 +71,8 @@ git clone <this-repo>
 cd nano-llm-lab
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-pytest -q   # 38 tests, ~1s on CPU
+pip install -e .    # so `scripts/*.py` can `import nanolab`
+pytest -q           # 38 tests, ~1s on CPU
 ```
 
 Tested on Apple Silicon (M3, MPS backend) with PyTorch 2.12. The training script also

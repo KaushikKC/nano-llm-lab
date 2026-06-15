@@ -166,8 +166,67 @@ committing to the longer `small.yaml` run.
 
 ### Main run (`small.yaml`, ~14M params)
 
-_TBD — loss curves, samples, throughput, and cost will be added after the `small.yaml`
-run completes._
+8,000 steps (~131M tokens) on Apple M3 (MPS), ~7.1 hours, ~5,150 tok/s, $0:
+
+| | |
+|---|---|
+| Params (total / non-embedding) | 13,767,552 / 10,621,824 |
+| Steps | 8,000 |
+| Tokens | 131,072,000 |
+| Wall time | 424.4 min (~7.1 h) |
+| Throughput | ~5,150 tok/s avg |
+| Hardware / cost | Apple M3, 16GB unified memory / $0 (local) |
+
+| Step | Train loss | Val loss |
+|---|---|---|
+| 0 | 9.10 | 9.10 |
+| 1,000 | 2.31 | 2.38 |
+| 2,000 | 2.04 | 2.05 |
+| 4,000 | 1.85 | 1.87 |
+| 6,000 | 1.74 | 1.79 |
+| 8,000 (final) | 1.70 | 1.72 |
+
+![small.yaml loss curve](docs/images/small_loss.png)
+
+Train and val loss track each other closely throughout — no overfitting at this token
+budget, and the cosine schedule's flattening tail is visible in the last ~2,000 steps.
+
+Sample completions (`generate_samples.py --ckpt checkpoints/small/ckpt_last.pt`):
+
+**Temperature 0.6**
+
+> Once upon a time, there was a little girl named Lily. She loved to play outside in
+> the sunshine. One day, she went to the park with her mom and saw a man selling ice
+> cream. She wanted to buy some ice cream, but her mom said they didn't have enough
+> money for the ice cream. Lily was sad because she really wanted some ice cream. But
+> then she saw a man who was selling ice cream. The ice cream man was very nice and
+> gave Lily a cone. Lily was happy and ate her ice cream.
+
+> Tom and his dog went to the park. They saw a big tree with many leaves and a swing.
+> They wanted to play on the swing. "Can we go on the swing?" Tom asked his mom. "Yes,
+> you can. But be careful. The swing is wet and slippery," his mom said. Tom and his mom
+> climbed on the swing. Tom swung high and low. He felt happy and free. He laughed and
+> shouted.
+
+**Temperature 1.0**
+
+> One day, a boy found a big book on the ground. He was very excited. He picked it up
+> and saw it was very heavy. It was for his dad's job! He did not know where it went.
+> The boy felt sad. He wanted to touch the book so much. He tried to open the book, but
+> it was too big. He tried and tried, but he just couldn't open it. Then he had an idea.
+> He decided to dig a hole in the book.
+
+> Tom and his dog went to the park. The park had a big yard with a pond. There were many
+> ducks, quacked, and ate bread. The ducks were happy. They liked to jog and play. "Can
+> we jog with the ducks?" Tom asked. "Yes, let's speed!" Lily said. They jogged around
+> the yard, looking at the sky.
+
+Compared to the tiny smoke-test checkpoint, the ~14M model at temperature 0.6 produces
+multi-paragraph stories with a consistent plot (a problem — ice cream costs money — and
+a resolution), correctly punctuated dialogue, and far fewer repeated/looping phrases. At
+temperature 1.0 it stays grammatical but starts drifting (introducing "Lily" mid-story
+about "Tom", "ducks... quacked" tense slip) — consistent with TinyStories' own
+small-model behavior reported by Eldan & Li.
 
 ## What I learned
 

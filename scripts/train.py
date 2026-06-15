@@ -7,6 +7,7 @@ Usage:
 """
 
 import argparse
+import json
 import math
 import os
 import time
@@ -98,11 +99,20 @@ def main() -> None:
     parser.add_argument("--config", required=True)
     parser.add_argument("--max_steps", type=int, default=None)
     parser.add_argument("--resume", type=str, default=None)
+    parser.add_argument("--wandb", action="store_true", help="also log metrics to Weights & Biases")
     args = parser.parse_args()
 
     model_cfg, train_cfg = load_config(args.config)
     if args.max_steps is not None:
         train_cfg.max_steps = args.max_steps
+    if args.wandb:
+        train_cfg.wandb = True
+
+    wandb_run = None
+    if train_cfg.wandb:
+        import wandb
+
+        wandb_run = wandb.init(project="nano-llm-lab", name=train_cfg.run_name, config=vars(train_cfg))
 
     set_seed(train_cfg.seed)
     device = get_device(train_cfg.device)
@@ -159,6 +169,11 @@ def main() -> None:
             writer.add_scalar("train/loss", loss.item(), step)
             writer.add_scalar("train/lr", lr, step)
             writer.add_scalar("train/tokens_per_sec", tok_per_sec, step)
+            if wandb_run is not None:
+                wandb_run.log(
+                    {"train/loss": loss.item(), "train/lr": lr, "train/tokens_per_sec": tok_per_sec},
+                    step=step,
+                )
 
         if step % train_cfg.eval_interval == 0 or step == train_cfg.max_steps - 1:
             val_loss = estimate_loss(model, val_ds, train_cfg, device)
@@ -166,11 +181,40 @@ def main() -> None:
             print(f"step {step:6d} | eval: train loss {train_loss:.4f} | val loss {val_loss:.4f}")
             writer.add_scalar("eval/train_loss", train_loss, step)
             writer.add_scalar("eval/val_loss", val_loss, step)
+            if wandb_run is not None:
+                wandb_run.log({"eval/train_loss": train_loss, "eval/val_loss": val_loss}, step=step)
 
         if step % train_cfg.ckpt_interval == 0 and step > start_step:
             save_checkpoint(model, optimizer, model_cfg, train_cfg, step)
 
     save_checkpoint(model, optimizer, model_cfg, train_cfg, train_cfg.max_steps)
+
+    total_steps = train_cfg.max_steps - start_step
+    total_tokens = total_steps * tokens_per_step
+    total_time = time.time() - t0
+    summary = {
+        "run_name": train_cfg.run_name,
+        "params": model.num_params(),
+        "params_non_embedding": model.num_params(non_embedding=True),
+        "total_steps": total_steps,
+        "total_tokens": total_tokens,
+        "total_time_sec": total_time,
+        "avg_tokens_per_sec": total_tokens / max(total_time, 1e-8),
+        "hardware": "Apple M3, 16GB unified memory",
+        "cost": "$0 (local compute)",
+    }
+    print(
+        f"\nRun summary: {summary['total_steps']:,} steps, {summary['total_tokens']:,} tokens, "
+        f"{summary['total_time_sec'] / 60:.1f} min, "
+        f"{summary['avg_tokens_per_sec']:,.0f} tok/s avg | "
+        f"hardware: {summary['hardware']} | cost: {summary['cost']}"
+    )
+    with open(os.path.join(train_cfg.out_dir, "run_summary.json"), "w") as f:
+        json.dump(summary, f, indent=2)
+
+    if wandb_run is not None:
+        wandb_run.log({"summary/" + k: v for k, v in summary.items() if isinstance(v, (int, float))})
+        wandb_run.finish()
 
 
 if __name__ == "__main__":

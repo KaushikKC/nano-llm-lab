@@ -4,7 +4,8 @@ numpy>=2.0
 
 # Data
 datasets>=5.0
-tokenizers>=0.23
+# transformers 5.x pins tokenizers<=0.23.0, so keep this range compatible with it.
+tokenizers>=0.22,<0.24
 
 # Logging
 tensorboard>=2.20
@@ -19,3 +20,8 @@ pytest>=9.0
 
 # Plotting (scripts/plot_loss.py, for README loss curves)
 matplotlib>=3.9
+
+# Stage 2: SFT on a pretrained Hugging Face model
+transformers>=4.46
+accelerate>=1.0
+huggingface_hub>=0.26

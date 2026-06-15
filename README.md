@@ -19,11 +19,63 @@ parameter-efficient fine-tuning (LoRA/QLoRA), and preference optimization (DPO).
 
 ## Architecture
 
-_TBD — diagram and module breakdown added once the model is implemented._
+A standard decoder-only transformer, but built with the small set of components that
+most current (2026) small open-weight models converge on instead of the original
+GPT-2 recipe: **RoPE** instead of learned positional embeddings, **RMSNorm** instead
+of LayerNorm, and a **SwiGLU** MLP instead of GELU. Every block is pre-norm with
+residual connections, and the token embedding is weight-tied with the LM head.
+
+```mermaid
+flowchart TD
+    A["token ids (B, T)"] --> B["Token Embedding (vocab_size x d_model)"]
+    B --> C["TransformerBlock x n_layer"]
+
+    subgraph C["TransformerBlock"]
+        direction TB
+        C1["RMSNorm"] --> C2["Causal Self-Attention\n(QKV proj -> RoPE on q,k -> SDPA(causal) -> out proj)"]
+        C2 --> C3["+ residual"]
+        C3 --> C4["RMSNorm"]
+        C4 --> C5["SwiGLU MLP\n(silu(gate(x)) * up(x) -> down)"]
+        C5 --> C6["+ residual"]
+    end
+
+    C --> D["Final RMSNorm"]
+    D --> E["LM Head (tied with Token Embedding)"]
+    E --> F["logits (B, T, vocab_size)"]
+```
+
+Module map (`nanolab/model/`):
+
+| Module | What it does |
+|---|---|
+| `norm.py` — `RMSNorm` | `x * rsqrt(mean(x^2) + eps) * weight`. No mean-centering, no bias. |
+| `rope.py` — `precompute_rope_freqs` / `apply_rope` | Precomputes cos/sin tables and rotates pairs of dimensions in q/k by position-dependent angles (rotate-half convention). |
+| `mlp.py` — `SwiGLU` | `down(silu(gate(x)) * up(x))`, all three projections bias-free. |
+| `attention.py` — `CausalSelfAttention` | Single fused QKV projection, RoPE applied to q and k, `F.scaled_dot_product_attention(..., is_causal=True)` (flash-attention kernel), output projection. |
+| `block.py` — `TransformerBlock` | `x = x + attn(rmsnorm(x))`, `x = x + mlp(rmsnorm(x))`. |
+| `gpt.py` — `GPT` | Embedding -> N blocks -> final RMSNorm -> tied LM head. GPT-2-style init (`std=0.02`), with residual-projection weights additionally scaled by `1/sqrt(2*n_layer)`. |
+
+Two configs are provided (`configs/`):
+
+| | `tiny.yaml` | `small.yaml` |
+|---|---|---|
+| layers / heads / d_model / d_ff | 4 / 4 / 128 / 384 | 6 / 6 / 384 / 1024 |
+| context length | 128 | 256 |
+| params | ~1.9M | ~14M |
+| purpose | fast smoke test | main result |
 
 ## Setup
 
-_TBD_
+```bash
+git clone <this-repo>
+cd nano-llm-lab
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+pytest -q   # 38 tests, ~1s on CPU
+```
+
+Tested on Apple Silicon (M3, MPS backend) with PyTorch 2.12. The training script also
+runs on CPU or CUDA via `get_device("auto")`.
 
 ## Data
 

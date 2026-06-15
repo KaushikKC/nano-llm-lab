@@ -58,6 +58,20 @@ def get_lr(step: int, train_cfg: TrainConfig) -> float:
     return train_cfg.min_lr + coeff * (train_cfg.lr - train_cfg.min_lr)
 
 
+@torch.no_grad()
+def estimate_loss(
+    model: torch.nn.Module, dataset: TokenDataset, train_cfg: TrainConfig, device: torch.device
+) -> float:
+    model.eval()
+    losses = torch.zeros(train_cfg.eval_iters)
+    for i in range(train_cfg.eval_iters):
+        x, y = dataset.get_batch(train_cfg.micro_batch_size, device)
+        _, loss = model(x, y)
+        losses[i] = loss.item()
+    model.train()
+    return losses.mean().item()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
@@ -120,6 +134,11 @@ def main() -> None:
                 f"step {step:6d} | loss {loss.item():.4f} | lr {lr:.2e} "
                 f"| {tok_per_sec:,.0f} tok/s"
             )
+
+        if step % train_cfg.eval_interval == 0 or step == train_cfg.max_steps - 1:
+            val_loss = estimate_loss(model, val_ds, train_cfg, device)
+            train_loss = estimate_loss(model, train_ds, train_cfg, device)
+            print(f"step {step:6d} | eval: train loss {train_loss:.4f} | val loss {val_loss:.4f}")
 
 
 if __name__ == "__main__":

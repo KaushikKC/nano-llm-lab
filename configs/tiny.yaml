@@ -1,0 +1,38 @@
+# Tiny config (~1.9M params) — for quickly smoke-testing the whole
+# data -> model -> train -> generate pipeline on CPU/MPS in minutes.
+
+model:
+  vocab_size: 8192
+  n_layer: 4
+  n_head: 4
+  d_model: 128
+  d_ff: 384
+  max_seq_len: 128
+  rope_base: 10000.0
+  dropout: 0.0
+
+train:
+  data_dir: data/processed
+  out_dir: checkpoints/tiny
+  run_name: tiny
+
+  micro_batch_size: 32
+  grad_accum_steps: 1
+  max_steps: 2000
+
+  lr: 1e-3
+  min_lr: 1e-4
+  warmup_steps: 100
+  weight_decay: 0.1
+  grad_clip: 1.0
+
+  eval_interval: 200
+  eval_iters: 20
+  log_interval: 20
+  ckpt_interval: 500
+
+  seed: 1337
+  device: auto
+  amp: false
+  compile: false
+  wandb: false

@@ -59,6 +59,26 @@ def get_lr(step: int, train_cfg: TrainConfig) -> float:
     return train_cfg.min_lr + coeff * (train_cfg.lr - train_cfg.min_lr)
 
 
+def save_checkpoint(
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    model_cfg: GPTConfig,
+    train_cfg: TrainConfig,
+    step: int,
+) -> None:
+    ckpt = {
+        "model": model.state_dict(),
+        "optimizer": optimizer.state_dict(),
+        "model_cfg": model_cfg,
+        "step": step,
+    }
+    step_path = os.path.join(train_cfg.out_dir, f"ckpt_{step}.pt")
+    last_path = os.path.join(train_cfg.out_dir, "ckpt_last.pt")
+    torch.save(ckpt, step_path)
+    torch.save(ckpt, last_path)
+    print(f"Saved checkpoint: {step_path}")
+
+
 @torch.no_grad()
 def estimate_loss(
     model: torch.nn.Module, dataset: TokenDataset, train_cfg: TrainConfig, device: torch.device
@@ -146,6 +166,11 @@ def main() -> None:
             print(f"step {step:6d} | eval: train loss {train_loss:.4f} | val loss {val_loss:.4f}")
             writer.add_scalar("eval/train_loss", train_loss, step)
             writer.add_scalar("eval/val_loss", val_loss, step)
+
+        if step % train_cfg.ckpt_interval == 0 and step > start_step:
+            save_checkpoint(model, optimizer, model_cfg, train_cfg, step)
+
+    save_checkpoint(model, optimizer, model_cfg, train_cfg, train_cfg.max_steps)
 
 
 if __name__ == "__main__":

@@ -137,7 +137,37 @@ Training details:
 
 ## Results
 
-_TBD — loss curves, samples, throughput, and cost will be added after training._
+### Smoke test (`tiny.yaml`, ~1.9M params)
+
+2,000 steps on Apple M3 (MPS), ~6 minutes, ~22.7K tok/s, $0:
+
+| Step | Train loss | Val loss |
+|---|---|---|
+| 0 | ~9.0 (≈ ln(8192), expected at init) | — |
+| 1980 | 2.72 | — |
+| 1999 (final eval) | 2.66 | 2.72 |
+
+Sample completions (`generate_samples.py --ckpt checkpoints/tiny/ckpt_last.pt`, temperature 0.8):
+
+> Once upon a time, there was a little girl named Lily. One day, Lily saw a big box of
+> yummy food. She wanted to go to the store and see what it was. Lily wanted to use the
+> toy to draw in the box. She asked her mommy, "Can I be a girl, please?" Her mommy
+> said, "Sure, you can't touch it."
+
+> Tom and his dog went to the park. Lily saw a big dog and wanted to play. She said, "I
+> want to play with your ball!" Tom said, "No, I did not know how to go," Lily said. They
+> went to the slide and found a big rock. The ball was fast and could fly.
+
+After only 2,000 steps (~8M tokens) the ~1.9M-param model has already picked up
+TinyStories' surface grammar, character names (Lily, Tom), and dialogue formatting —
+though it loses the plot thread within a paragraph. This confirms the full
+data → model → train → checkpoint → generate pipeline works end to end before
+committing to the longer `small.yaml` run.
+
+### Main run (`small.yaml`, ~14M params)
+
+_TBD — loss curves, samples, throughput, and cost will be added after the `small.yaml`
+run completes._
 
 ## What I learned
 

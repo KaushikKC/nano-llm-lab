@@ -67,7 +67,7 @@ Two configs are provided (`configs/`):
 ## Setup
 
 ```bash
-git clone <this-repo>
+git clone https://github.com/KaushikKC/nano-llm-lab.git
 cd nano-llm-lab
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
@@ -229,6 +229,9 @@ about "Tom", "ducks... quacked" tense slip) — consistent with TinyStories' own
 small-model behavior reported by Eldan & Li.
 
 ## What I learned
+
+Notes on the design decisions and the properties that make them work, with pointers to
+the tests that verify each claim numerically rather than just asserting it in prose.
 
 ### Attention, implemented by hand
 

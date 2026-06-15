@@ -102,7 +102,37 @@ python scripts/prepare_dataset.py   # -> data/processed/{train,val}.bin + meta.j
 
 ## Training
 
-_TBD_
+```bash
+# Smoke test (few minutes on M3 CPU/MPS)
+python scripts/train.py --config configs/tiny.yaml
+
+# Main run (~131M tokens, hours)
+python scripts/train.py --config configs/small.yaml
+
+# Resume from a checkpoint
+python scripts/train.py --config configs/small.yaml --resume checkpoints/small/ckpt_last.pt
+
+# Optional Weights & Biases logging (in addition to tensorboard)
+python scripts/train.py --config configs/small.yaml --wandb
+```
+
+Training details:
+
+- **Optimizer**: AdamW (`betas=(0.9, 0.95)`), with the standard decay/no-decay split —
+  2D weight matrices get `weight_decay=0.1`, 1D tensors (RMSNorm gains) don't.
+- **LR schedule**: linear warmup for `warmup_steps`, then cosine decay to `min_lr`.
+- **Batching**: `get_batch` samples random fixed-length windows from a memmapped
+  `uint16` token array (no `DataLoader`); gradient accumulation (`grad_accum_steps`)
+  builds up an effective batch size beyond what fits in 16GB unified memory.
+- **Eval**: every `eval_interval` steps, average loss over `eval_iters` batches on
+  both train and val splits (no-grad, `model.eval()`).
+- **Checkpoints**: `ckpt_<step>.pt` + a rolling `ckpt_last.pt` every `ckpt_interval`
+  steps, plus a final checkpoint; `--resume <path>` restores model, optimizer state,
+  and step.
+- **Logging**: tensorboard (`runs/<run_name>`) always; `--wandb` mirrors the same
+  scalars to Weights & Biases. A `run_summary.json` is written to `out_dir` at the end
+  of each run with total tokens, wall time, average tokens/sec, and a hardware/cost
+  note.
 
 ## Results
 

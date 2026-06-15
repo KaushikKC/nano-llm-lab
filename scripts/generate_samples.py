@@ -42,7 +42,9 @@ def main() -> None:
     device = get_device("auto")
     print(f"Using device: {device}")
 
-    ckpt = torch.load(args.ckpt, map_location=device)
+    # weights_only=False: these are checkpoints we wrote ourselves (contain a
+    # GPTConfig dataclass, which torch's default weights-only unpickler rejects).
+    ckpt = torch.load(args.ckpt, map_location=device, weights_only=False)
     model = GPT(ckpt["model_cfg"]).to(device)
     model.load_state_dict(ckpt["model"])
     model.eval()

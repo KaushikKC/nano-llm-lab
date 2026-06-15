@@ -1,0 +1,28 @@
+# Stage 2 SFT config: full fine-tune of Qwen2.5-0.5B (base) on the Solidity/DeFi
+# smart-contract-review dataset in data/sft/.
+# Effective batch size = micro_batch_size * grad_accum_steps = 2 * 8 = 16.
+
+model_name: Qwen/Qwen2.5-0.5B
+max_seq_len: 512
+
+data_dir: data/sft
+out_dir: checkpoints/sft
+run_name: sft_qwen0.5b
+
+micro_batch_size: 2
+grad_accum_steps: 8
+epochs: 10
+
+lr: 2.0e-5
+min_lr: 2.0e-6
+warmup_steps: 10
+weight_decay: 0.0
+grad_clip: 1.0
+
+log_interval: 5
+
+seed: 1337
+device: auto
+dtype: bfloat16
+gradient_checkpointing: true
+wandb: false

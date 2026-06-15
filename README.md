@@ -1,21 +1,28 @@
 # nano-llm-lab
 
-A language model, built and aligned end to end. **Stage 1** (this repo, so far): a
-decoder-only transformer implemented from scratch in pure PyTorch — every component
-(attention, RoPE, RMSNorm, SwiGLU, the training loop, the sampler) is hand-written, no
+A language model, built and aligned end to end. **Stage 1**: a decoder-only
+transformer implemented from scratch in pure PyTorch — every component (attention,
+RoPE, RMSNorm, SwiGLU, the training loop, the sampler) is hand-written, no
 `nn.Transformer`, no `trl`/`peft` — and trained on [TinyStories](https://huggingface.co/datasets/roneneldan/TinyStories).
+**Stage 2** (this repo, in progress): supervised fine-tuning (SFT) of a small
+pretrained open model on a hand-built Solidity smart-contract-review / DeFi-mechanics
+dataset.
 
-Later stages (planned) take the same model through supervised fine-tuning,
-parameter-efficient fine-tuning (LoRA/QLoRA), and preference optimization (DPO).
+Later stages (planned) add parameter-efficient fine-tuning (LoRA/QLoRA) and preference
+optimization (DPO).
 
 ## Table of contents
 
+**Stage 1 — from-scratch pretraining**
 - [Architecture](#architecture)
 - [Setup](#setup)
 - [Data](#data)
 - [Training](#training)
 - [Results](#results)
 - [What I learned](#what-i-learned)
+
+**Stage 2 — supervised fine-tuning**
+- [Stage 2: Supervised fine-tuning (SFT)](#stage-2-supervised-fine-tuning-sft)
 
 ## Architecture
 
@@ -299,3 +306,34 @@ Two smaller but still informative simplifications/upgrades over the GPT-2 recipe
   see this: with all-zero input, `silu(0) = 0`, so the gate zeroes out the whole MLP
   output regardless of `up`'s weights — a plain two-layer MLP with GELU wouldn't have
   this property.
+
+---
+
+## Stage 2: Supervised fine-tuning (SFT)
+
+Stage 1 trained a transformer from scratch on generic text (TinyStories) to learn *how
+language models work*. Stage 2 takes a small **pretrained** open model and
+**supervised-fine-tunes** it — via Hugging Face `transformers`, not hand-written — on a
+domain dataset built around smart-contract security review and DeFi mechanics, so the
+model learns to *follow a chat format* and *produce technically correct Solidity
+reviews*.
+
+### Overview
+
+*(filled in as the pipeline is built — see commit history for progress)*
+
+### Dataset
+
+*(Solidity vulnerability ID / fixes, DeFi mechanics, protocol design — `data/sft/`)*
+
+### Training
+
+*(`scripts/sft_train.py`, `configs/sft/qwen2.5-0.5b.yaml`)*
+
+### Results
+
+*(loss curve, before/after generations, eval pass rates)*
+
+### What I learned (Stage 2)
+
+*(chat templating, prompt-loss masking, full-FT memory budget, base vs. instruct)*

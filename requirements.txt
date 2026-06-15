@@ -16,3 +16,6 @@ tqdm>=4.66
 
 # Testing
 pytest>=9.0
+
+# Plotting (scripts/plot_loss.py, for README loss curves)
+matplotlib>=3.9

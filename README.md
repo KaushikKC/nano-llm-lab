@@ -140,4 +140,69 @@ _TBD — loss curves, samples, throughput, and cost will be added after training
 
 ## What I learned
 
-_TBD_
+### Attention, implemented by hand
+
+Writing `CausalSelfAttention` from scratch (instead of `nn.MultiheadAttention`) makes a
+few things concrete that are easy to wave away when using a library:
+
+- **It's just one big linear projection, then a reshape.** `qkv_proj` is a single
+  `(d_model, 3*d_model)` matrix; the "multi-head" structure only appears when you
+  `view` the output into `(B, n_head, T, head_dim)`. Each head doesn't have its own
+  weight tensor — it's the same matrix, sliced along the feature axis.
+- **Causality is one flag.** With `F.scaled_dot_product_attention(..., is_causal=True)`,
+  there's no need to materialize an upper-triangular mask of `-inf` — PyTorch's fused
+  kernel (flash attention on supported backends) handles it, which is both simpler and
+  faster than a hand-rolled `masked_fill`.
+- **Testing causality directly is cheap and convincing**: feed a sequence, change the
+  tokens at positions `>= k`, and assert the logits at positions `< k` are *bitwise
+  identical*. If attention were leaking future information (e.g. a missing mask, or an
+  off-by-one in RoPE position indices), this test fails immediately — see
+  `tests/test_attention.py`.
+- **RoPE is applied to q and k, never v.** Only the *similarity* between query and key
+  positions should encode relative position; the value vectors that get mixed together
+  shouldn't be rotated, or the rotation would have to be undone afterwards.
+
+### Positional encodings: RoPE vs. learned embeddings
+
+The classic GPT-2 approach adds a learned `(max_seq_len, d_model)` embedding table to
+the token embeddings once, at the input. RoPE instead **rotates** each query/key vector
+by an angle that depends on its position, applied fresh inside every attention layer:
+
+- **No separate parameters, no hard sequence-length ceiling baked into a table size.**
+  RoPE's cos/sin tables are *computed*, not learned, so they can be precomputed for any
+  `max_seq_len` (or extended later) without adding parameters.
+- **The property that actually matters is relative-position invariance**: for the
+  rotation `R(θ)`, `<R(θ_m) q, R(θ_n) k> ` depends only on `q`, `k`, and `(m - n)`, not
+  on the absolute positions `m` and `n`. This is *why* RoPE generalizes to longer
+  contexts and why attention scores are naturally "position-aware" without the model
+  needing to learn that from data. `tests/test_rope.py::test_relative_position_invariance`
+  verifies this numerically: rotating two vectors by the same offset leaves their dot
+  product unchanged.
+- **Rotation preserves norms.** `apply_rope` doesn't change `||q||` or `||k||` — it's an
+  orthogonal transformation (rotating pairs of dimensions), which `tests/test_rope.py`
+  also checks. This matters because it means RoPE doesn't interact with
+  scale-sensitive things like the `1/sqrt(head_dim)` attention scaling — it's purely a
+  phase shift.
+- **Rotate-half vs. interleaved.** There are two common conventions for which
+  dimension-pairs get rotated together: interleaved `(x0,x1), (x2,x3), ...` (the
+  original RoPE paper) or "rotate-half" `(x[:d/2], x[d/2:])` paired up (used by
+  LLaMA/GPT-NeoX and most current implementations). This project uses rotate-half —
+  functionally equivalent, but the pairing changes which dimensions of `head_dim` are
+  rotated together, so cos/sin tables and the `apply_rope` implementation must agree on
+  the same convention.
+
+### RMSNorm and SwiGLU
+
+Two smaller but still informative simplifications/upgrades over the GPT-2 recipe:
+
+- **RMSNorm drops mean-centering.** LayerNorm subtracts the mean and divides by the
+  std; RMSNorm only divides by the root-mean-square. Empirically this loses little
+  while being cheaper and having one fewer reduction. `tests/test_norm.py` checks that
+  the RMS of the output is ~1 (with unit weight) and that scaling the input by a
+  constant doesn't change the (normalized) output.
+- **SwiGLU is gating, not just a bigger MLP.** `down(silu(gate(x)) * up(x))` — the
+  `gate` branch acts as a learned, per-element multiplicative switch on the `up`
+  branch. `tests/test_mlp.py::test_zero_input_gives_zero_output` is the clearest way to
+  see this: with all-zero input, `silu(0) = 0`, so the gate zeroes out the whole MLP
+  output regardless of `up`'s weights — a plain two-layer MLP with GELU wouldn't have
+  this property.

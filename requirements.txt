@@ -1,0 +1,18 @@
+# Core
+torch>=2.12
+numpy>=2.0
+
+# Data
+datasets>=5.0
+tokenizers>=0.23
+
+# Logging
+tensorboard>=2.20
+# wandb>=0.18  # optional, enable with --wandb
+
+# Config / utils
+PyYAML>=6.0
+tqdm>=4.66
+
+# Testing
+pytest>=9.0

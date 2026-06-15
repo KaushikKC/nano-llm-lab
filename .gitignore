@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Data artifacts (large, regenerable via scripts/)
+data/
+*.bin
+*.npy
+
+# Checkpoints
+checkpoints/
+*.pt
+*.ckpt
+
+# Logging / experiment tracking
+runs/
+wandb/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/

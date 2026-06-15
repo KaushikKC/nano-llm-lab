@@ -26,7 +26,14 @@ def load_config(path: str) -> tuple[GPTConfig, TrainConfig]:
     with open(path) as f:
         raw = yaml.safe_load(f)
     model_cfg = GPTConfig(**raw.get("model", {}))
-    train_cfg = TrainConfig(**raw.get("train", {}))
+    train_dict = raw.get("train", {})
+    # PyYAML only parses exponential notation as a float if it contains a
+    # decimal point (e.g. "1.0e-3"), so plain "1e-3" survives as a string —
+    # coerce the known float fields explicitly to guard against that.
+    for key in ("lr", "min_lr", "weight_decay", "grad_clip"):
+        if key in train_dict:
+            train_dict[key] = float(train_dict[key])
+    train_cfg = TrainConfig(**train_dict)
     return model_cfg, train_cfg
 
 

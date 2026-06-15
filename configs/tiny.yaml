@@ -20,8 +20,8 @@ train:
   grad_accum_steps: 1
   max_steps: 2000
 
-  lr: 1e-3
-  min_lr: 1e-4
+  lr: 1.0e-3
+  min_lr: 1.0e-4
   warmup_steps: 100
   weight_decay: 0.1
   grad_clip: 1.0

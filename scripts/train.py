@@ -7,6 +7,7 @@ Usage:
 """
 
 import argparse
+import math
 import os
 
 import torch
@@ -27,12 +28,33 @@ def load_config(path: str) -> tuple[GPTConfig, TrainConfig]:
 
 
 def build_optimizer(model: torch.nn.Module, train_cfg: TrainConfig) -> torch.optim.Optimizer:
-    return torch.optim.AdamW(
-        model.parameters(),
-        lr=train_cfg.lr,
-        betas=train_cfg.betas,
-        weight_decay=train_cfg.weight_decay,
-    )
+    """AdamW with the standard decay/no-decay split: weight matrices (2D
+    tensors) get weight decay, everything else (RMSNorm gains, the tied
+    embedding/lm_head weight is 2D so it *is* decayed, biases if any) — in
+    this model only RMSNorm weight vectors (1D) end up in the no-decay
+    group."""
+    decay, no_decay = [], []
+    for p in model.parameters():
+        if not p.requires_grad:
+            continue
+        (decay if p.dim() >= 2 else no_decay).append(p)
+
+    groups = [
+        {"params": decay, "weight_decay": train_cfg.weight_decay},
+        {"params": no_decay, "weight_decay": 0.0},
+    ]
+    return torch.optim.AdamW(groups, lr=train_cfg.lr, betas=train_cfg.betas)
+
+
+def get_lr(step: int, train_cfg: TrainConfig) -> float:
+    """Linear warmup followed by cosine decay to `min_lr`."""
+    if step < train_cfg.warmup_steps:
+        return train_cfg.lr * (step + 1) / train_cfg.warmup_steps
+    if step >= train_cfg.max_steps:
+        return train_cfg.min_lr
+    decay_ratio = (step - train_cfg.warmup_steps) / (train_cfg.max_steps - train_cfg.warmup_steps)
+    coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))
+    return train_cfg.min_lr + coeff * (train_cfg.lr - train_cfg.min_lr)
 
 
 def main() -> None:

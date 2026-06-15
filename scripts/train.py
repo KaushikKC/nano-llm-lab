@@ -13,6 +13,7 @@ import time
 
 import torch
 import yaml
+from torch.utils.tensorboard import SummaryWriter
 
 from nanolab.config import GPTConfig, TrainConfig
 from nanolab.data.dataset import TokenDataset
@@ -107,6 +108,7 @@ def main() -> None:
         print(f"Resumed from {args.resume} at step {start_step}")
 
     os.makedirs(train_cfg.out_dir, exist_ok=True)
+    writer = SummaryWriter(log_dir=os.path.join("runs", train_cfg.run_name))
 
     tokens_per_step = train_cfg.micro_batch_size * train_cfg.grad_accum_steps * model_cfg.max_seq_len
     print(f"Tokens per optimizer step: {tokens_per_step:,}")
@@ -134,11 +136,16 @@ def main() -> None:
                 f"step {step:6d} | loss {loss.item():.4f} | lr {lr:.2e} "
                 f"| {tok_per_sec:,.0f} tok/s"
             )
+            writer.add_scalar("train/loss", loss.item(), step)
+            writer.add_scalar("train/lr", lr, step)
+            writer.add_scalar("train/tokens_per_sec", tok_per_sec, step)
 
         if step % train_cfg.eval_interval == 0 or step == train_cfg.max_steps - 1:
             val_loss = estimate_loss(model, val_ds, train_cfg, device)
             train_loss = estimate_loss(model, train_ds, train_cfg, device)
             print(f"step {step:6d} | eval: train loss {train_loss:.4f} | val loss {val_loss:.4f}")
+            writer.add_scalar("eval/train_loss", train_loss, step)
+            writer.add_scalar("eval/val_loss", val_loss, step)
 
 
 if __name__ == "__main__":

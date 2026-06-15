@@ -57,3 +57,25 @@ def test_sequence_longer_than_max_seq_len_raises(tiny_config):
     idx = torch.randint(0, tiny_config.vocab_size, (1, tiny_config.max_seq_len + 1))
     with pytest.raises(ValueError):
         model(idx)
+
+
+def test_overfits_a_single_tiny_batch(tiny_config):
+    """The cheapest possible end-to-end check: forward, backward, and the
+    optimizer step are all wired correctly if a tiny model can memorize a
+    single fixed batch within a hundred steps."""
+    model = GPT(tiny_config)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-2)
+
+    idx = torch.randint(0, tiny_config.vocab_size, (4, tiny_config.max_seq_len))
+    targets = torch.randint(0, tiny_config.vocab_size, (4, tiny_config.max_seq_len))
+
+    _, initial_loss = model(idx, targets)
+
+    for _ in range(100):
+        _, loss = model(idx, targets)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+    _, final_loss = model(idx, targets)
+    assert final_loss.item() < 0.5 * initial_loss.item()

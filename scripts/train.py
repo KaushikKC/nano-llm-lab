@@ -9,6 +9,7 @@ Usage:
 import argparse
 import math
 import os
+import time
 
 import torch
 import yaml
@@ -92,6 +93,33 @@ def main() -> None:
         print(f"Resumed from {args.resume} at step {start_step}")
 
     os.makedirs(train_cfg.out_dir, exist_ok=True)
+
+    tokens_per_step = train_cfg.micro_batch_size * train_cfg.grad_accum_steps * model_cfg.max_seq_len
+    print(f"Tokens per optimizer step: {tokens_per_step:,}")
+
+    model.train()
+    t0 = time.time()
+    for step in range(start_step, train_cfg.max_steps):
+        lr = get_lr(step, train_cfg)
+        for group in optimizer.param_groups:
+            group["lr"] = lr
+
+        optimizer.zero_grad(set_to_none=True)
+        for _ in range(train_cfg.grad_accum_steps):
+            x, y = train_ds.get_batch(train_cfg.micro_batch_size, device)
+            _, loss = model(x, y)
+            (loss / train_cfg.grad_accum_steps).backward()
+
+        torch.nn.utils.clip_grad_norm_(model.parameters(), train_cfg.grad_clip)
+        optimizer.step()
+
+        if step % train_cfg.log_interval == 0:
+            elapsed = time.time() - t0
+            tok_per_sec = tokens_per_step * (step - start_step + 1) / max(elapsed, 1e-8)
+            print(
+                f"step {step:6d} | loss {loss.item():.4f} | lr {lr:.2e} "
+                f"| {tok_per_sec:,.0f} tok/s"
+            )
 
 
 if __name__ == "__main__":

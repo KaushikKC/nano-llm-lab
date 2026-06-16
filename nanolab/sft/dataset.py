@@ -66,26 +66,40 @@ class SFTDataset(Dataset):
         return self.examples[idx]
 
 
-def collate_fn(batch: list[dict[str, torch.Tensor]], pad_id: int) -> dict[str, torch.Tensor]:
+def collate_fn(
+    batch: list[dict[str, torch.Tensor]],
+    pad_id: int,
+    fixed_len: int | None = None,
+) -> dict[str, torch.Tensor]:
     """Pad a batch of variable-length items to the same length.
+
+    If *fixed_len* is given, pad/truncate every item to exactly that length.
+    This keeps MPS tensor shapes constant across batches, avoiding per-batch
+    Metal shader re-compilation.
 
     input_ids are padded with pad_id; labels are padded with -100 so padding
     positions are ignored by CrossEntropyLoss.
     """
-    max_len = max(item["input_ids"].shape[0] for item in batch)
+    target_len = fixed_len if fixed_len is not None else max(
+        item["input_ids"].shape[0] for item in batch
+    )
 
     input_ids_list: list[torch.Tensor] = []
     labels_list: list[torch.Tensor] = []
 
     for item in batch:
-        n = item["input_ids"].shape[0]
-        pad = max_len - n
-        input_ids_list.append(
-            torch.cat([item["input_ids"], torch.full((pad,), pad_id, dtype=torch.long)])
-        )
-        labels_list.append(
-            torch.cat([item["labels"], torch.full((pad,), -100, dtype=torch.long)])
-        )
+        ids = item["input_ids"]
+        lbs = item["labels"]
+        n = ids.shape[0]
+        if n < target_len:
+            pad = target_len - n
+            ids = torch.cat([ids, torch.full((pad,), pad_id, dtype=torch.long)])
+            lbs = torch.cat([lbs, torch.full((pad,), -100, dtype=torch.long)])
+        elif n > target_len:
+            ids = ids[:target_len]
+            lbs = lbs[:target_len]
+        input_ids_list.append(ids)
+        labels_list.append(lbs)
 
     return {
         "input_ids": torch.stack(input_ids_list),

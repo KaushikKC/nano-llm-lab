@@ -90,9 +90,12 @@ def train(cfg: SFTConfig, resume_path: str | None = None) -> None:
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
+    # MPS (Apple Silicon) can hang on SDPA for sequences >256 tokens; use eager attention.
+    attn_impl = "eager" if str(device) == "mps" else "sdpa"
     model = AutoModelForCausalLM.from_pretrained(
         cfg.model_name,
         torch_dtype=dtype,
+        attn_implementation=attn_impl,
     ).to(device)
 
     if cfg.gradient_checkpointing:
@@ -108,7 +111,9 @@ def train(cfg: SFTConfig, resume_path: str | None = None) -> None:
     val_ds   = SFTDataset(data_dir / "val.jsonl",   tokenizer, cfg.max_seq_len)
 
     pad_id = tokenizer.pad_token_id
-    _collate = partial(collate_fn, pad_id=pad_id)
+    # Pad every batch to max_seq_len so MPS sees a consistent tensor shape
+    # across all batches — avoids re-compiling Metal kernels per batch.
+    _collate = partial(collate_fn, pad_id=pad_id, fixed_len=cfg.max_seq_len)
 
     train_loader = DataLoader(
         train_ds,
@@ -154,6 +159,19 @@ def train(cfg: SFTConfig, resume_path: str | None = None) -> None:
     run_dir = Path("runs") / cfg.run_name
     writer = SummaryWriter(str(run_dir))
     print(f"Tensorboard: {run_dir}")
+
+    # Warm up MPS kernels at the actual sequence length so Metal shader compilation
+    # (both forward and backward) happens once before the timed training loop.
+    if str(device) == "mps":
+        print("Warming up MPS kernels (forward + backward — first-time Metal shader compilation)…")
+        _warmup_ids = torch.ones(cfg.micro_batch_size, cfg.max_seq_len, dtype=torch.long, device=device)
+        _warmup_labels = _warmup_ids.clone()
+        _out = model(_warmup_ids, labels=_warmup_labels)
+        _out.loss.backward()
+        torch.mps.synchronize()
+        model.zero_grad()
+        del _warmup_ids, _warmup_labels, _out
+        print("Warmup done.")
 
     t0 = time.time()
     train_loss = float("nan")  # sentinel; overwritten on first optimizer step

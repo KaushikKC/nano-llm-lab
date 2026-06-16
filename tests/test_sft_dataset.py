@@ -154,3 +154,30 @@ def test_collate_single_item():
     batch = collate_fn(items, pad_id=0)
     assert batch["input_ids"].shape == (1, 2)
     assert batch["labels"].shape == (1, 2)
+
+
+def test_collate_fixed_len_pads_short():
+    items = [{"input_ids": torch.tensor([1, 2]), "labels": torch.tensor([-100, 3])}]
+    batch = collate_fn(items, pad_id=0, fixed_len=5)
+    assert batch["input_ids"].shape == (1, 5)
+    assert batch["input_ids"][0, 2].item() == 0  # padded with pad_id
+    assert batch["labels"][0, 2].item() == -100   # padded with -100
+
+
+def test_collate_fixed_len_truncates_long():
+    items = [{"input_ids": torch.tensor([1, 2, 3, 4, 5]), "labels": torch.tensor([-100, 2, 3, 4, 5])}]
+    batch = collate_fn(items, pad_id=0, fixed_len=3)
+    assert batch["input_ids"].shape == (1, 3)
+    assert batch["labels"].shape == (1, 3)
+
+
+def test_collate_fixed_len_all_same_shape():
+    """With fixed_len, every batch item should have identical shape."""
+    items = [
+        {"input_ids": torch.tensor([1, 2, 3]),    "labels": torch.tensor([-100, 2, 3])},
+        {"input_ids": torch.tensor([4, 5]),        "labels": torch.tensor([-100, 5])},
+        {"input_ids": torch.tensor([6, 7, 8, 9]), "labels": torch.tensor([-100, 7, 8, 9])},
+    ]
+    batch = collate_fn(items, pad_id=0, fixed_len=4)
+    assert batch["input_ids"].shape == (3, 4)
+    assert batch["labels"].shape == (3, 4)

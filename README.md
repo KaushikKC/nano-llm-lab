@@ -320,7 +320,25 @@ reviews*.
 
 ### Overview
 
-*(filled in as the pipeline is built — see commit history for progress)*
+Base model: **[Qwen/Qwen2.5-0.5B](https://huggingface.co/Qwen/Qwen2.5-0.5B)** (not the
+instruct variant) — ungated, Apache-2.0, ~494M params, bf16. The base model was chosen
+deliberately: before SFT it follows no chat format and produces no structure, so the
+before/after comparison is meaningful. Using the instruct model would start already
+fine-tuned and obscure the effect of our domain SFT.
+
+```mermaid
+flowchart LR
+    A["JSONL dataset\n(system, user, assistant)"]
+    B["apply_chat_template\n(ChatML format)"]
+    C["Tokenize + mask\n(labels[:prompt_len]=-100)"]
+    D["Epoch loop\ngradient accumulation\ncosine LR + warmup"]
+    E["SFT checkpoint\n(HF safetensors)"]
+    A --> B --> C --> D --> E
+```
+
+The SFT pipeline is hand-written (`scripts/sft_train.py`, ~300 LoC) — no `SFTTrainer`
+or `trl` — to demonstrate understanding of each step: chat templating, prompt-loss
+masking, gradient accumulation, and the LR schedule.
 
 ### Dataset
 
@@ -341,7 +359,37 @@ constant-product AMM math, impermanent loss, and more.
 
 ### Training
 
-*(`scripts/sft_train.py`, `configs/sft/qwen2.5-0.5b.yaml`)*
+```bash
+# Full SFT run (~20 min on M3 MPS, $0)
+python scripts/sft_train.py --config configs/sft/qwen2.5-0.5b.yaml
+
+# Resume from a checkpoint
+python scripts/sft_train.py --config configs/sft/qwen2.5-0.5b.yaml \
+    --resume checkpoints/sft/ckpt_last.pt
+```
+
+Hyperparameters (`configs/sft/qwen2.5-0.5b.yaml`):
+
+| | |
+|---|---|
+| Base model | `Qwen/Qwen2.5-0.5B` (base, not instruct) |
+| Parameters | ~494M |
+| Precision | bfloat16 |
+| Epochs | 10 |
+| Micro batch size | 2 |
+| Gradient accumulation | 8 → effective batch = 16 |
+| Learning rate | 2e-5 (cosine decay, warmup 10 steps) |
+| Min LR | 2e-6 |
+| Gradient clip | 1.0 |
+| Max seq len | 512 |
+| Gradient checkpointing | yes |
+
+**Prompt-loss masking**: only the assistant turn's tokens contribute to the cross-entropy
+loss — `labels[:prompt_len] = -100`. This prevents the model from being rewarded for
+regenerating the (fixed) system prompt and user question.
+
+**Chat format**: Qwen2.5's ChatML template (`<|im_start|>system` / `<|im_end|>` pattern),
+applied via `tokenizer.apply_chat_template`, with an inline ChatML fallback.
 
 ### Results
 

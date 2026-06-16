@@ -393,7 +393,52 @@ applied via `tokenizer.apply_chat_template`, with an inline ChatML fallback.
 
 ### Results
 
-*(loss curve, before/after generations, eval pass rates)*
+![SFT loss curve](docs/images/sft_loss.png)
+
+**Loss progression** (full run: 88.4 min, Apple M3 16 GB, $0):
+
+| Epoch | Train loss | Val loss |
+|---|---|---|
+| 1 | — | 2.5101 |
+| 2 | 2.1656 | 2.3779 |
+| 3 | 2.0776 | 2.2425 |
+| 4 | 1.8101 | 2.1952 |
+| **5** | **1.4525** | **2.1924** ← best |
+| 6 | — | 2.1957 |
+| 7 | 1.4980 | 2.1986 |
+| 8 | 1.1011 | 2.2141 |
+| 9 | 1.1776 | 2.2215 |
+| 10 | 1.3741 | 2.2220 |
+
+Train loss logged at every `log_interval=5` global step; epochs 1 and 6 span steps that skip the interval. Val loss rises after epoch 5 — expected overfitting with a 50-example dataset.
+
+**Keyword-coverage eval** (18 held-out examples with per-row `keywords` lists;
+rubric: keyword present in response as substring → full per-example breakdown in
+[`docs/sft/eval_report.md`](docs/sft/eval_report.md)):
+
+| Category | n | Base | SFT | Δ |
+|---|---|---|---|---|
+| `defi_mechanics` | 4 | 23.8% | 33.3% | +9.5 pp |
+| `vulnerability_id` | 6 | 26.7% | 23.3% | −3.3 pp |
+| `protocol_design` | 4 | 20.0% | 10.0% | −10.0 pp |
+| `fix` | 4 | 25.0% | 5.0% | −20.0 pp |
+| **Overall** | **18** | **24.2%** | **18.7%** | **−5.5 pp** |
+
+The SFT model reliably adopts the structured audit format (`**Vulnerability: …**` /
+`**Fix:** …`) and gains 9.5 pp on DeFi mechanics Q&A where domain vocabulary is
+consistent across training examples. The overall keyword coverage falls because the
+model confidently identifies *different* issues than the rubric keywords expected — a
+classic data-scarcity effect with 50 training examples. The val-loss curve confirms
+the model began to overfit after epoch 5 (best val_loss 2.1924).
+
+**Before / after example** (`defi_mechanics` — isolated vs. cross-margin):
+
+| | Response excerpt |
+|---|---|
+| Base (before SFT) | "isolated margin is a strategy where the margin is held by the protocol itself, while cross-margin is a strategy where the margin is held by the user" — no technical detail, 2/5 keywords |
+| SFT (after) | "**Isolated margin** … margin is held in a separate account … deducted from the underlying assets … **Cross-margin** … shared across positions … liquidated when the total margin ratio falls below threshold" — 3/5 keywords |
+
+Full 18-example comparison: [`docs/sft/before_after.md`](docs/sft/before_after.md)
 
 ### What I learned (Stage 2)
 

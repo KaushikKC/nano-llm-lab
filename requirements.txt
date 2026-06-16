@@ -25,3 +25,7 @@ matplotlib>=3.9
 transformers>=4.46
 accelerate>=1.0
 huggingface_hub>=0.26
+
+# Stage 3: parameter-efficient fine-tuning (LoRA / QLoRA)
+peft>=0.19
+bitsandbytes>=0.49  # 4-bit quant for QLoRA; CPU-only on MPS (no CUDA kernel)

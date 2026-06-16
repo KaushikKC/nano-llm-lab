@@ -7,7 +7,11 @@ __pycache__/
 venv/
 
 # Data artifacts (large, regenerable via scripts/)
-/data/
+# Ignore everything in /data except the SFT dataset JSONL files (small, committed).
+/data/*
+!/data/sft/
+/data/sft/*
+!/data/sft/*.jsonl
 *.bin
 *.npy
 
@@ -25,3 +29,6 @@ wandb/
 .idea/
 .vscode/
 .claude/
+
+# Personal notes (not part of the project)
+LEARNING_NOTES.md

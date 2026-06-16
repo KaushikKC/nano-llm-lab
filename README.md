@@ -324,7 +324,20 @@ reviews*.
 
 ### Dataset
 
-*(Solidity vulnerability ID / fixes, DeFi mechanics, protocol design — `data/sft/`)*
+Hand-written JSONL with four categories, each row `{"category", "system", "user", "assistant"}`:
+
+| Category | Description | Train | Val | Eval |
+|---|---|---|---|---|
+| `vulnerability_id` | Given a Solidity snippet, name the bug and explain the risk + fix | 29 | 6 | 6 |
+| `fix` | Provide a corrected version of a vulnerable contract with change notes | 8 | 4 | 4 |
+| `defi_mechanics` | Explain DeFi math: AMMs, IL, flash loans, liquidations, stablecoins | 8 | 4 | 4 |
+| `protocol_design` | Architecture tradeoffs: proxies, oracles, governance, ERC standards | 5 | 2 | 4 |
+| **Total** | | **50** | **16** | **18** |
+
+`eval.jsonl` rows include a `"keywords"` list for rubric-based keyword-coverage scoring.
+The edge: every example was written and reviewed for technical correctness — covering
+reentrancy, oracle manipulation, signature replay, storage collision, flash-loan attacks,
+constant-product AMM math, impermanent loss, and more.
 
 ### Training
 

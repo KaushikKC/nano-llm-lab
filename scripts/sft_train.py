@@ -156,6 +156,7 @@ def train(cfg: SFTConfig, resume_path: str | None = None) -> None:
     print(f"Tensorboard: {run_dir}")
 
     t0 = time.time()
+    train_loss = float("nan")  # sentinel; overwritten on first optimizer step
 
     # ── training loop ─────────────────────────────────────────────────────────
     for epoch in range(start_epoch, cfg.epochs):
@@ -195,16 +196,16 @@ def train(cfg: SFTConfig, resume_path: str | None = None) -> None:
                 optimizer.zero_grad()
 
                 global_step += 1
+                train_loss = accum_loss * cfg.grad_accum_steps / max(1, micro_steps)
 
                 if global_step % cfg.log_interval == 0:
                     elapsed = time.time() - t0
-                    train_loss = accum_loss * cfg.grad_accum_steps / micro_steps
                     print(
                         f"epoch {epoch+1}/{cfg.epochs}  step {global_step}/{total_steps}"
                         f"  train_loss={train_loss:.4f}  lr={lr_now:.2e}  {elapsed:.0f}s"
                     )
-                    writer.add_scalar("train/loss", train_loss, global_step)
-                    writer.add_scalar("train/lr", lr_now, global_step)
+                writer.add_scalar("train/loss", train_loss, global_step)
+                writer.add_scalar("train/lr", lr_now, global_step)
 
                 accum_loss = 0.0
                 micro_steps = 0

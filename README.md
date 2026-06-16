@@ -397,4 +397,41 @@ applied via `tokenizer.apply_chat_template`, with an inline ChatML fallback.
 
 ### What I learned (Stage 2)
 
-*(chat templating, prompt-loss masking, full-FT memory budget, base vs. instruct)*
+#### Chat templating is load-bearing
+
+Qwen2.5-0.5B (base) ships a `chat_template` in its `tokenizer_config.json` — the same
+ChatML template the instruct model uses. This makes `tokenizer.apply_chat_template`
+available even on the base checkpoint, which is convenient. More importantly, the format
+(`<|im_start|>system … <|im_end|>`) must be *exactly* what we generate with during
+inference — any formatting mismatch (wrong delimiters, extra spaces) causes the model to
+ignore the instructions entirely. The fallback path in `nanolab/sft/chat_format.py`
+reproduces the same template by hand, which was useful for testing without a real
+tokenizer.
+
+#### Prompt-loss masking matters more than it seems
+
+Without masking, the loss includes every token — including the fixed system prompt and
+user question, which are the same structure in every row. The model would waste capacity
+memorizing the prompts instead of learning the answer. Setting `labels[:prompt_len] = -100`
+makes the loss purely about the assistant response, which is both more efficient and more
+likely to generalize (the model isn't trained to reproduce specific prompt phrasing).
+
+The tricky edge case: if a very long prompt gets truncated at `max_seq_len`, *all* labels
+are `-100`, and `CrossEntropyLoss` returns NaN. Solved by skipping NaN batches.
+
+#### Full fine-tuning memory budget: why 0.5B and not 1.5B
+
+Full fine-tuning (vs LoRA) keeps gradients and AdamW momentum/variance for every
+parameter. In bf16, a 1.5B model needs: weights ~3GB + gradients ~3GB + Adam m+v (fp32) ~12GB
+= ~18GB — too tight for 16GB unified memory. The 0.5B model needs ~1GB + 1GB + 4GB = ~6GB —
+safe. The tradeoff is documented because it's the real engineering constraint behind the
+model size choice, not a preference. LoRA (Stage 3) trades memory for a small quality
+penalty and makes 1-7B practical on consumer hardware.
+
+#### Base model vs. instruct
+
+Using the base model makes the before/after comparison meaningful: the base model's
+output before SFT is unformatted next-token continuation, not a chat response. After
+SFT, the model follows the ChatML format and produces domain-structured answers. Using
+an already-instruct-fine-tuned model would start with a model that already knows how to
+follow instructions, obscuring how much of the behavior comes from our domain data.

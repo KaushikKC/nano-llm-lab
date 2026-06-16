@@ -435,3 +435,24 @@ output before SFT is unformatted next-token continuation, not a chat response. A
 SFT, the model follows the ChatML format and produces domain-structured answers. Using
 an already-instruct-fine-tuned model would start with a model that already knows how to
 follow instructions, obscuring how much of the behavior comes from our domain data.
+
+#### MPS (Apple Silicon) training gotchas
+
+Three MPS-specific issues surfaced that aren't documented in the PyTorch docs:
+
+1. **Dynamic sequence lengths = new kernel per shape**: PyTorch MPS compiles Metal
+   shaders per tensor shape. With a dynamic-length `collate_fn`, every batch produced
+   a different sequence length (323, 414, 512...), triggering a fresh Metal shader
+   compilation before *each* batch — effectively hanging the training loop. Fix: pad
+   every batch to `max_seq_len` in `collate_fn` so MPS always sees the same shape.
+
+2. **SDPA hangs on long sequences**: `F.scaled_dot_product_attention` on MPS hangs
+   for sequence lengths ≥ 512 tokens (tested on PyTorch 2.12, M3). Fix: use
+   `attn_implementation="eager"` when loading the model on MPS, which falls back to
+   the standard attention loop.
+
+3. **No_grad warmup isn't enough**: pre-compiling kernels with a `torch.no_grad()`
+   forward pass doesn't compile the backward-pass kernels. The first
+   `loss.backward()` in the training loop triggers another long compilation.
+   Fix: include a full forward + backward in the warmup, then `model.zero_grad()`.
+   Total warmup overhead: ~5 minutes for the first run; cached for subsequent runs.

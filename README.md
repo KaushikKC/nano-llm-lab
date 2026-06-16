@@ -4,12 +4,13 @@ A language model, built and aligned end to end. **Stage 1**: a decoder-only
 transformer implemented from scratch in pure PyTorch — every component (attention,
 RoPE, RMSNorm, SwiGLU, the training loop, the sampler) is hand-written, no
 `nn.Transformer`, no `trl`/`peft` — and trained on [TinyStories](https://huggingface.co/datasets/roneneldan/TinyStories).
-**Stage 2** (this repo, in progress): supervised fine-tuning (SFT) of a small
-pretrained open model on a hand-built Solidity smart-contract-review / DeFi-mechanics
-dataset.
+**Stage 2**: supervised fine-tuning (SFT) of a small pretrained open model on a
+hand-built Solidity smart-contract-review / DeFi-mechanics dataset.
+**Stage 3** (this repo, in progress): parameter-efficient fine-tuning — LoRA and QLoRA
+on the same dataset, with a full tradeoff comparison table (trainable params, memory,
+wall-clock time, eval score).
 
-Later stages (planned) add parameter-efficient fine-tuning (LoRA/QLoRA) and preference
-optimization (DPO).
+Later stages (planned) add preference optimization (DPO).
 
 ## Table of contents
 
@@ -23,6 +24,9 @@ optimization (DPO).
 
 **Stage 2 — supervised fine-tuning**
 - [Stage 2: Supervised fine-tuning (SFT)](#stage-2-supervised-fine-tuning-sft)
+
+**Stage 3 — parameter-efficient fine-tuning (LoRA / QLoRA)**
+- [Stage 3: LoRA and QLoRA](#stage-3-lora-and-qlora)
 
 ## Architecture
 
@@ -501,3 +505,79 @@ Three MPS-specific issues surfaced that aren't documented in the PyTorch docs:
    `loss.backward()` in the training loop triggers another long compilation.
    Fix: include a full forward + backward in the warmup, then `model.zero_grad()`.
    Total warmup overhead: ~5 minutes for the first run; cached for subsequent runs.
+
+---
+
+## Stage 3: LoRA and QLoRA
+
+### Overview
+
+Stage 3 asks: *can we get the same domain adaptation as Stage 2 using a fraction of
+the trainable parameters — and how do the three approaches compare?*
+
+The same Solidity/DeFi SFT dataset is used for all three runs so the comparison is
+apples-to-apples.
+
+```
+Base model (Qwen/Qwen2.5-0.5B, frozen)
+       │
+       │  inject LoRA adapter matrices (A, B) into each projection layer
+       ▼
+LoRA model — only A and B matrices are trainable (~8.9M of 494M params = 1.8%)
+       │
+       │  optionally: quantize base to 4-bit first  →  QLoRA
+       ▼
+Fine-tuned adapter → merge into base for deployment, or keep separate for swapping
+```
+
+### What is LoRA?
+
+A regular linear layer computes `y = Wx`. LoRA *adds* two small matrices:
+`y = Wx + BAx`, where `B ∈ R^{d×r}` and `A ∈ R^{r×k}` with rank `r ≪ min(d,k)`.
+
+During training, `W` is frozen — only `A` and `B` are updated. At the end, the
+adapter can be merged back: `W' = W + BA`, producing a single matrix with no inference
+overhead.
+
+### What is QLoRA?
+
+QLoRA = 4-bit quantized base model + LoRA adapters. The base weights are stored as
+NF4 (NormalFloat4), reducing memory from ~988 MB (bf16) to ~248 MB. The adapters
+remain in bf16. Forward/backward compute dequantizes on the fly to fp16.
+
+> **Hardware note**: `bitsandbytes` 4-bit kernels are CUDA-only. On this machine
+> (Apple M3 MPS) the 4-bit model falls back to CPU for compute. The comparison table
+> records measured CPU timings for QLoRA and notes the CUDA projection.
+
+### Training
+
+```bash
+# LoRA
+python scripts/lora_train.py --config configs/lora/qwen2.5-0.5b-lora.yaml
+
+# QLoRA
+python scripts/lora_train.py --config configs/lora/qwen2.5-0.5b-qlora.yaml --qlora
+
+# Merge adapter into base
+python scripts/merge_adapter.py --adapter checkpoints/lora/hf --out checkpoints/lora/merged
+```
+
+### Hyperparameters
+
+| | |
+|---|---|
+| Base model | `Qwen/Qwen2.5-0.5B` |
+| LoRA rank (r) | 16 |
+| LoRA alpha | 32 (scale = 2.0) |
+| Target modules | q/k/v/o_proj, gate/up/down_proj (all 7 projection layers) |
+| Epochs | 10 |
+| Learning rate | 2e-4 (higher than full FT — adapters start from zero) |
+| Effective batch | 16 (micro=2, accum=8) |
+
+### Results
+
+*(comparison table — filled after all three runs complete)*
+
+### What I learned (Stage 3)
+
+*(filled after runs complete)*

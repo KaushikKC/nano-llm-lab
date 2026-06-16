@@ -382,7 +382,7 @@ Hyperparameters (`configs/sft/qwen2.5-0.5b.yaml`):
 | Min LR | 2e-6 |
 | Gradient clip | 1.0 |
 | Max seq len | 512 |
-| Gradient checkpointing | yes |
+| Gradient checkpointing | no (MPS doesn't support it; 0.5B fits in 16GB without it) |
 
 **Prompt-loss masking**: only the assistant turn's tokens contribute to the cross-entropy
 loss — `labels[:prompt_len] = -100`. This prevents the model from being rewarded for

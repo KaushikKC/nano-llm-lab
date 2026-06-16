@@ -24,5 +24,5 @@ log_interval: 5
 seed: 1337
 device: auto
 dtype: bfloat16
-gradient_checkpointing: true
+gradient_checkpointing: false  # MPS (Apple Silicon) doesn't support gradient checkpointing reliably; safe without it since 0.5B full-FT fits in 16GB
 wandb: false

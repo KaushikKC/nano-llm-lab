@@ -28,5 +28,5 @@ class SFTConfig:
     seed: int = 1337
     device: str = "auto"
     dtype: str = "bfloat16"
-    gradient_checkpointing: bool = True
+    gradient_checkpointing: bool = False
     wandb: bool = False

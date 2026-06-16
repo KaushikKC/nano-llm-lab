@@ -170,6 +170,10 @@ def train(cfg: SFTConfig, resume_path: str | None = None) -> None:
 
             # forward
             outputs = model(input_ids=input_ids, labels=labels)
+            if outputs.loss.isnan():
+                # All labels are -100 (prompt-only after truncation) — skip batch.
+                micro_steps += 1
+                continue
             loss = outputs.loss / cfg.grad_accum_steps
             loss.backward()
             accum_loss += loss.item()

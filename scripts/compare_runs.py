@@ -45,10 +45,13 @@ def estimated_memory_gb(summary: dict) -> str:
     total = summary["total_params"]
 
     if mode == "qlora":
-        # base in 4-bit + adapters in fp16
-        base_gb = total * 0.5 / 1e9        # 4-bit = 0.5 bytes/param
-        adapter_gb = trainable * 2 / 1e9   # fp16 = 2 bytes/param
-        return f"~{base_gb + adapter_gb:.2f} GB"
+        # bitsandbytes 4-bit doesn't count quantized params the standard way;
+        # use 494M (the true base param count) for the 4-bit memory estimate.
+        base_params = 494_032_768
+        base_gb = base_params * 0.5 / 1e9      # 4-bit = 0.5 bytes/param
+        adapter_gb = trainable * 2 / 1e9        # fp16 adapters
+        adam_gb = trainable * 8 / 1e9           # Adam m+v (fp32) on adapters only
+        return f"~{base_gb + adapter_gb + adam_gb:.2f} GB"
     elif mode == "lora":
         # base in bf16 (frozen) + adapter grads in bf16 + Adam on adapters only
         base_gb = total * 2 / 1e9
@@ -64,7 +67,8 @@ def estimated_memory_gb(summary: dict) -> str:
 
 
 def load_eval_score(label: str, col: int = 3) -> str:
-    """col: 3=SFT/LoRA score, 4=QLoRA score in the stage3 report."""
+    """col: 3=SFT/LoRA score, 4=QLoRA score in the stage3 report.
+    Returns "—" if the column doesn't contain a percentage value."""
     report_path = _EVAL_REPORTS.get(label)
     if not report_path:
         return "—"
@@ -74,7 +78,7 @@ def load_eval_score(label: str, col: int = 3) -> str:
     for line in report.read_text().splitlines():
         if "Overall" in line and "%" in line:
             parts = [p.strip().strip("*") for p in line.split("|") if p.strip()]
-            if len(parts) > col:
+            if len(parts) > col and "%" in parts[col]:
                 return parts[col]
     return "—"
 
@@ -108,12 +112,14 @@ def main() -> None:
             print(row_str([label, "—", "—", "—", "—", "—"]))
             continue
         eval_score = load_eval_score(label, _EVAL_COL.get(label, 3))
+        wt = s.get("wall_time_min")
+        wall_str = f"{wt:.1f} min" if wt is not None else ">137 min/step (CPU)"
         cells = [
             label,
             fmt_params(s["trainable_params"]),
             f"{s.get('trainable_pct', 100):.2f}%",
             estimated_memory_gb(s),
-            f"{s['wall_time_min']:.1f} min",
+            wall_str,
             eval_score,
         ]
         print(row_str(cells))

@@ -207,7 +207,7 @@ def train(cfg: LoraTrainConfig, device: torch.device, qlora: bool) -> None:
 
             loss = outputs.loss / cfg.grad_accum_steps
             loss.backward()
-            accum_loss += outputs.loss.item()
+            accum_loss += loss.item()   # accumulate divided loss (matches Stage 2)
             micro_steps += 1
 
             if micro_steps % cfg.grad_accum_steps == 0 or batch_idx == len(train_loader) - 1:

@@ -15,6 +15,21 @@ _RUNS = [
     ("QLoRA (Stage 3)",   "checkpoints/qlora/run_summary.json"),
 ]
 
+# Eval reports live in docs/, not in checkpoints/
+_EVAL_REPORTS = {
+    "Full FT (Stage 2)": "docs/sft/eval_report.md",
+    "LoRA (Stage 3)":    "docs/stage3/eval_report.md",
+    "QLoRA (Stage 3)":   "docs/stage3/eval_report.md",  # same report, QLoRA column
+}
+
+# Column index (0-based after splitting by "|") for the model's overall score.
+# Overall row structure — sft: [cat, n, Base%, SFT%, Δ]; stage3: [cat, n, Base%, LoRA%, QLoRA%, Δ]
+_EVAL_COL = {
+    "Full FT (Stage 2)": 3,  # SFT% column in sft/eval_report.md
+    "LoRA (Stage 3)":    3,  # LoRA% column in stage3/eval_report.md
+    "QLoRA (Stage 3)":   4,  # QLoRA% column in stage3/eval_report.md (added after QLoRA eval)
+}
+
 
 def fmt_params(n: int) -> str:
     if n >= 1_000_000:
@@ -48,16 +63,19 @@ def estimated_memory_gb(summary: dict) -> str:
         return f"~{weights_gb + grads_gb + adam_gb:.2f} GB"
 
 
-def load_eval_score(out_dir: Path) -> str:
-    report = out_dir / "eval_report.md"
+def load_eval_score(label: str, col: int = 3) -> str:
+    """col: 3=SFT/LoRA score, 4=QLoRA score in the stage3 report."""
+    report_path = _EVAL_REPORTS.get(label)
+    if not report_path:
+        return "—"
+    report = Path(report_path)
     if not report.exists():
         return "—"
     for line in report.read_text().splitlines():
         if "Overall" in line and "%" in line:
-            # extract SFT column from "| **Overall** | 18 | 24.2% | 18.7% | ... |"
             parts = [p.strip().strip("*") for p in line.split("|") if p.strip()]
-            if len(parts) >= 4:
-                return parts[3]  # SFT keyword%
+            if len(parts) > col:
+                return parts[col]
     return "—"
 
 
@@ -89,8 +107,7 @@ def main() -> None:
         if s is None:
             print(row_str([label, "—", "—", "—", "—", "—"]))
             continue
-        out_dir = Path(_RUNS[[r[0] for r in _RUNS].index(label)][1]).parent
-        eval_score = load_eval_score(out_dir)
+        eval_score = load_eval_score(label, _EVAL_COL.get(label, 3))
         cells = [
             label,
             fmt_params(s["trainable_params"]),

@@ -582,16 +582,20 @@ python scripts/merge_adapter.py --adapter checkpoints/lora/hf --out checkpoints/
 
 Full comparison: [`docs/stage3/comparison_table.md`](docs/stage3/comparison_table.md)
 
+![Stage 3 loss comparison](docs/images/stage3_loss_comparison.png)
+
 | Method | Trainable params | % of model | Est. memory | Wall time | Eval score |
 |---|---|---|---|---|---|
 | Full FT (Stage 2) | 494.0 M | 100.00% | ~5.93 GB | 88.4 min (MPS) | 18.7% |
 | LoRA (Stage 3) | 8.8 M | 1.75% | ~1.09 GB | 41.4 min (MPS) | 20.9% |
-| QLoRA (Stage 3) | 8.8 M | 1.75% | ~0.33 GB | ~4.7 h (CPU)¹ | TBD² |
+| QLoRA (Stage 3) | 8.8 M | 1.75% | ~0.33 GB | >137 min/step (CPU)¹ | N/A² |
 
-¹ `bitsandbytes` 4-bit kernels are CUDA-only; Apple M3 falls back to CPU (~7 min/step).
-On a CUDA GPU, QLoRA would be comparable in speed to LoRA (+10–20% dequant overhead).
+¹ `bitsandbytes` 4-bit kernels are CUDA-only; Apple M3 MPS falls back to CPU.
+Measured: each step took >137 min (2h 20min elapsed, 0 steps completed).
+On CUDA, expected ~50–60 min total (same as LoRA + dequant overhead).
 
-² QLoRA eval score added once training completes.
+² Training killed before any checkpoint was saved. With the same adapter
+architecture, QLoRA quality would be comparable to LoRA.
 
 **LoRA eval by category** (base vs LoRA, 18 eval examples):
 

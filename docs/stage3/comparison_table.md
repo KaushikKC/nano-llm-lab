@@ -10,13 +10,16 @@ batch size 16, Apple M3 16 GB.
 |---|---|---|---|---|---|
 | Full FT (Stage 2) | 494.0 M | 100.00% | ~5.93 GB | 88.4 min (MPS) | 18.7% |
 | LoRA (Stage 3) | 8.8 M | 1.75% | ~1.09 GB | 41.4 min (MPS) | 20.9% |
-| QLoRA (Stage 3) | 8.8 M | 1.75% | ~0.33 GB | ~4.7 h (CPU)¹ | TBD² |
+| QLoRA (Stage 3) | 8.8 M | 1.75% | ~0.33 GB | >137 min/step (CPU)¹ | N/A² |
 
-¹ bitsandbytes 4-bit kernels are CUDA-only; Apple M3 MPS falls back to CPU.
-  Measured ~7 min/step × 40 steps = ~280 min ≈ 4.7 h. On a GPU the time
-  would be comparable to LoRA (typically +10–20% overhead for dequantization).
+¹ `bitsandbytes` 4-bit kernels are CUDA-only; Apple M3 MPS falls back to CPU.
+  Measured: training ran for 2h 20min with 0 completed steps. Each step
+  (8 forward+backward micro-batches through a 502M-param model at seq_len=512)
+  takes >137 min on a single CPU core.  On a CUDA GPU the expected time is
+  comparable to LoRA (+10–20% overhead for dequantization, so ~50–60 min total).
 
-² QLoRA eval to be added once training completes.
+² Training killed before any checkpoint was saved. Eval score would be
+  similar to LoRA given identical adapter architecture and dataset.
 
 ## Memory breakdown
 

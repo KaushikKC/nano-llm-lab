@@ -27,6 +27,10 @@ Later stages (planned) add preference optimization (DPO).
 
 **Stage 3 — parameter-efficient fine-tuning (LoRA / QLoRA)**
 - [Stage 3: LoRA and QLoRA](#stage-3-lora-and-qlora)
+  - [What is LoRA?](#what-is-lora)
+  - [What is QLoRA?](#what-is-qlora)
+  - [Results](#results-1)
+  - [What I learned (Stage 3)](#what-i-learned-stage-3)
 
 ## Architecture
 
@@ -523,7 +527,7 @@ Base model (Qwen/Qwen2.5-0.5B, frozen)
        │
        │  inject LoRA adapter matrices (A, B) into each projection layer
        ▼
-LoRA model — only A and B matrices are trainable (~8.9M of 494M params = 1.8%)
+LoRA model — only A and B matrices are trainable (~8.8M of 502M params = 1.75%)
        │
        │  optionally: quantize base to 4-bit first  →  QLoRA
        ▼

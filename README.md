@@ -576,8 +576,65 @@ python scripts/merge_adapter.py --adapter checkpoints/lora/hf --out checkpoints/
 
 ### Results
 
-*(comparison table — filled after all three runs complete)*
+Full comparison: [`docs/stage3/comparison_table.md`](docs/stage3/comparison_table.md)
+
+| Method | Trainable params | % of model | Est. memory | Wall time | Eval score |
+|---|---|---|---|---|---|
+| Full FT (Stage 2) | 494.0 M | 100.00% | ~5.93 GB | 88.4 min (MPS) | 18.7% |
+| LoRA (Stage 3) | 8.8 M | 1.75% | ~1.09 GB | 41.4 min (MPS) | 20.9% |
+| QLoRA (Stage 3) | 8.8 M | 1.75% | ~0.33 GB | ~4.7 h (CPU)¹ | TBD² |
+
+¹ `bitsandbytes` 4-bit kernels are CUDA-only; Apple M3 falls back to CPU (~7 min/step).
+On a CUDA GPU, QLoRA would be comparable in speed to LoRA (+10–20% dequant overhead).
+
+² QLoRA eval score added once training completes.
+
+**LoRA eval by category** (base vs LoRA, 18 eval examples):
+
+| Category | Base | LoRA | Δ |
+|---|---|---|---|
+| defi_mechanics | 23.8% | 33.3% | +9.5 pp |
+| fix | 25.0% | 5.0% | −20.0 pp |
+| protocol_design | 25.0% | 20.0% | −5.0 pp |
+| vulnerability_id | 26.7% | 23.3% | −3.3 pp |
+| **Overall** | **25.3%** | **20.9%** | **−4.4 pp** |
+
+Full report: [`docs/stage3/eval_report.md`](docs/stage3/eval_report.md)
 
 ### What I learned (Stage 3)
 
-*(filled after runs complete)*
+**Why LoRA works**: freezing W and only training two small matrices A and B
+(rank r=16) means the weight *update* lives in a low-rank subspace. For
+domain adaptation this is usually enough — the base model already knows how
+to reason; we are steering it toward a style and vocabulary, not teaching it
+arithmetic from scratch. The update `ΔW = BA` has at most rank r, so we need
+`r×(d+k)` parameters instead of `d×k`.
+
+**Adapter swapping**: because adapters are tiny (~18 MB) and the base is
+shared, you can keep one base model in memory and hot-swap different task
+adapters at inference time. This is the foundation of multi-task serving
+systems (e.g., S-LoRA).
+
+**Memory math**: full FT requires gradients and AdamW m+v for every parameter
+(494 M × 12 bytes ≈ 5.9 GB). LoRA only trains the adapter parameters
+(8.8 M × 12 bytes ≈ 106 MB) — a 56× reduction in optimizer state alone. The
+base weights are kept frozen in bf16 and contribute ~988 MB, but no gradient
+is stored for them.
+
+**QLoRA and why CUDA matters**: quantizing the base to 4-bit NF4 cuts base
+weight storage by 4×. But the dequantize-compute-requantize cycle requires
+custom CUDA kernels in `bitsandbytes`. On Apple M3 (no CUDA), the ops fall
+back to CPU — training becomes ~7 min/step vs ~1 min/step on MPS. On a real
+GPU, QLoRA enables fine-tuning 7B+ models on 8–12 GB VRAM cards that couldn't
+otherwise fit the optimizer state for even a LoRA run.
+
+**LoRA rank vs quality**: r=16 with α=32 (scale=2.0) is a common starting
+point. Lower r (4–8) trains faster and uses less memory; higher r (64–128)
+approaches full FT quality at the cost of more trainable params. The "sweet
+spot" is task-dependent.
+
+**Merge vs keep separate**: `merge_and_unload()` folds `BA` into `W`,
+producing a single-weight model with zero inference overhead. Keeping the
+adapter separate (via `PeftModel`) allows runtime enable/disable but adds a
+small forward-pass overhead. For production deployment, merge; for
+experimentation, keep separate.

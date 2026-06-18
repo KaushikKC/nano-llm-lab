@@ -1,0 +1,22 @@
+model_name: checkpoints/tool_sft/hf
+ref_model_name: checkpoints/tool_sft/hf
+data_dir: data/tool_dpo
+# DPO uses dpo_pairs.jsonl (train) from data_dir
+out_dir: checkpoints/tool_dpo
+run_name: tool_dpo_qwen0.5b
+max_seq_len: 384
+beta: 0.1
+micro_batch_size: 1
+grad_accum_steps: 4
+epochs: 3
+lr: 5.0e-7
+min_lr: 5.0e-8
+warmup_steps: 5
+weight_decay: 0.0
+grad_clip: 1.0
+log_interval: 2
+seed: 42
+device: auto
+dtype: bfloat16
+ppo_epochs: 1
+ppo_steps_per_epoch: 20

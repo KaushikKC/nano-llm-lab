@@ -105,7 +105,7 @@ def is_schema_valid(tc: dict | None, tool_names: set) -> bool:
 
 
 def eval_model(model, tokenizer, rows: list, tool_names: set, device: torch.device, label: str):
-    name_correct = schema_valid = 0
+    name_correct = schema_valid = name_mentioned = 0
     results = []
     for row in rows:
         prompt = build_prompt(tokenizer, row["prompt"])
@@ -113,51 +113,62 @@ def eval_model(model, tokenizer, rows: list, tool_names: set, device: torch.devi
         tc = extract_tool_call(raw)
         nc = tc is not None and tc.get("name") == row["expected_tool"]
         sv = is_schema_valid(tc, tool_names)
-        name_correct += int(nc)
-        schema_valid += int(sv)
+        # soft metric: correct tool name appears anywhere in raw output
+        nm = row["expected_tool"] in raw
+        name_correct  += int(nc)
+        schema_valid  += int(sv)
+        name_mentioned += int(nm)
+        got = tc.get("name", "?") if tc else "NONE"
         results.append({
             "id": row["id"],
             "category": row["category"],
             "expected": row["expected_tool"],
-            "got": tc.get("name", "?") if tc else "NONE",
+            "got": got,
             "name_correct": nc,
             "schema_valid": sv,
+            "name_mentioned": nm,
             "raw": raw[:200],
         })
-        mark = "✓" if nc else "✗"
-        print(f"  {mark} [{row['id']}] expected={row['expected_tool']:28s} got={results[-1]['got']}")
+        mark = "✓" if nc else ("~" if nm else "✗")
+        print(f"  {mark} [{row['id']}] expected={row['expected_tool']:28s} got={got:28s}  mentioned={'yes' if nm else 'no'}")
     n = len(rows)
     print(f"\n  {label}: name_correct={name_correct}/{n} ({100*name_correct//n}%)  "
-          f"schema_valid={schema_valid}/{n} ({100*schema_valid//n}%)\n")
-    return results, name_correct, schema_valid
+          f"schema_valid={schema_valid}/{n} ({100*schema_valid//n}%)  "
+          f"name_mentioned={name_mentioned}/{n} ({100*name_mentioned//n}%)\n")
+    return results, name_correct, schema_valid, name_mentioned
 
 
-def write_report(path: str, base_res, lora_res, base_nc, base_sv, lora_nc, lora_sv, n):
+def write_report(path: str, base_res, lora_res, base_nc, base_sv, base_nm, lora_nc, lora_sv, lora_nm, n):
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     lines = [
         "# Tool-SFT LoRA — eval report",
         "",
-        "Measures name accuracy and schema validity on the 20-prompt tool-use holdout set,",
-        "comparing base Qwen2.5-0.5B vs. tool-SFT LoRA adapter.",
+        "Measures name accuracy, schema validity, and name-mentioned (soft) on the",
+        "20-prompt holdout set, comparing base Qwen2.5-0.5B vs. tool-SFT LoRA (epoch 4).",
+        "",
+        "> **Note**: `schema_valid` requires a parseable `<tool_call>` JSON block.",
+        "> `name_mentioned` (soft) checks whether the correct tool name appears anywhere",
+        "> in the raw output — captures partial format learning where the model reasons",
+        "> correctly but doesn't yet emit the full structured block.",
         "",
         "## Summary",
         "",
-        "| Model | Name correct | Schema valid |",
-        "|---|---|---|",
-        f"| Base (no adapter) | {base_nc}/{n} ({100*base_nc//n}%) | {base_sv}/{n} ({100*base_sv//n}%) |",
-        f"| Tool-SFT LoRA     | {lora_nc}/{n} ({100*lora_nc//n}%) | {lora_sv}/{n} ({100*lora_sv//n}%) |",
+        "| Model | Name correct | Schema valid | Name mentioned (soft) |",
+        "|---|---|---|---|",
+        f"| Base (no adapter) | {base_nc}/{n} ({100*base_nc//n}%) | {base_sv}/{n} ({100*base_sv//n}%) | {base_nm}/{n} ({100*base_nm//n}%) |",
+        f"| Tool-SFT LoRA     | {lora_nc}/{n} ({100*lora_nc//n}%) | {lora_sv}/{n} ({100*lora_sv//n}%) | {lora_nm}/{n} ({100*lora_nm//n}%) |",
         "",
         "## Per-example results",
         "",
-        "| # | Category | Expected | Base | LoRA |",
+        "| # | Category | Expected | Base mentioned | LoRA mentioned |",
         "|---|---|---|---|---|",
     ]
     for b, l in zip(base_res, lora_res):
-        bm = "✓" if b["name_correct"] else "✗"
-        lm = "✓" if l["name_correct"] else "✗"
+        bm = "✓" if b["name_correct"] else ("~" if b["name_mentioned"] else "✗")
+        lm = "✓" if l["name_correct"] else ("~" if l["name_mentioned"] else "✗")
         lines.append(
             f"| {b['id']} | {b['category']} | `{b['expected']}` "
-            f"| {bm} `{b['got']}` | {lm} `{l['got']}` |"
+            f"| {bm} | {lm} |"
         )
     Path(path).write_text("\n".join(lines))
 
@@ -183,18 +194,18 @@ def main():
 
     print("\n--- Base model ---")
     base_model = load_model(args.base, None, device)
-    base_res, base_nc, base_sv = eval_model(base_model, tokenizer, rows, tool_names, device, "Base")
+    base_res, base_nc, base_sv, base_nm = eval_model(base_model, tokenizer, rows, tool_names, device, "Base")
     del base_model
     if str(device) == "mps":
         torch.mps.empty_cache()
 
     print("--- Tool-SFT LoRA ---")
     lora_model = load_model(args.base, args.lora, device)
-    lora_res, lora_nc, lora_sv = eval_model(lora_model, tokenizer, rows, tool_names, device, "LoRA")
+    lora_res, lora_nc, lora_sv, lora_nm = eval_model(lora_model, tokenizer, rows, tool_names, device, "LoRA")
 
     n = len(rows)
     if args.out:
-        write_report(args.out, base_res, lora_res, base_nc, base_sv, lora_nc, lora_sv, n)
+        write_report(args.out, base_res, lora_res, base_nc, base_sv, base_nm, lora_nc, lora_sv, lora_nm, n)
         print(f"Report written: {args.out}")
 
 

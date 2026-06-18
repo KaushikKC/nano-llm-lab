@@ -1,0 +1,22 @@
+model_name: checkpoints/sft/hf
+ref_model_name: checkpoints/sft/hf
+data_dir: data/dpo
+out_dir: checkpoints/dpo
+run_name: dpo_qwen0.5b
+max_seq_len: 256
+beta: 0.1
+micro_batch_size: 1
+grad_accum_steps: 4
+epochs: 3
+lr: 5.0e-7
+min_lr: 5.0e-8
+warmup_steps: 5
+weight_decay: 0.0
+grad_clip: 1.0
+log_interval: 2
+seed: 42
+device: auto
+dtype: bfloat16
+# PPO-specific (Phase 1: RM training, Phase 2: policy update)
+ppo_epochs: 1          # 1 epoch = 20 steps; epoch 2 hits MPS OOM on 16 GB M3
+ppo_steps_per_epoch: 20

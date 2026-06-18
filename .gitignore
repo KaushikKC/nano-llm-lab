@@ -15,6 +15,10 @@ venv/
 !/data/dpo/
 /data/dpo/*
 !/data/dpo/*.jsonl
+!/data/tools/
+/data/tools/*
+!/data/tools/*.json
+!/data/tools/*.jsonl
 *.bin
 *.npy
 

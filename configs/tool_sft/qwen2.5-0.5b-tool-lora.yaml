@@ -1,0 +1,33 @@
+model_name: Qwen/Qwen2.5-0.5B
+# LoRA adapter
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+bias: none
+# Data — tool-use dataset
+max_seq_len: 512
+data_dir: data/tools
+# Training — more epochs because dataset is smaller (50 train rows)
+out_dir: checkpoints/tool_sft
+run_name: tool_sft_qwen0.5b
+micro_batch_size: 2
+grad_accum_steps: 4
+epochs: 15
+lr: 2.0e-4
+min_lr: 2.0e-5
+warmup_steps: 10
+weight_decay: 0.0
+grad_clip: 1.0
+log_interval: 5
+seed: 42
+device: auto
+dtype: bfloat16
+wandb: false

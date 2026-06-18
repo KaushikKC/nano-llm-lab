@@ -6,11 +6,11 @@ RoPE, RMSNorm, SwiGLU, the training loop, the sampler) is hand-written, no
 `nn.Transformer`, no `trl`/`peft` — and trained on [TinyStories](https://huggingface.co/datasets/roneneldan/TinyStories).
 **Stage 2**: supervised fine-tuning (SFT) of a small pretrained open model on a
 hand-built Solidity smart-contract-review / DeFi-mechanics dataset.
-**Stage 3** (this repo, in progress): parameter-efficient fine-tuning — LoRA and QLoRA
-on the same dataset, with a full tradeoff comparison table (trainable params, memory,
-wall-clock time, eval score).
-
-Later stages (planned) add preference optimization (DPO).
+**Stage 3**: parameter-efficient fine-tuning — LoRA and QLoRA on the same dataset, with
+a full tradeoff comparison table (trainable params, memory, wall-clock time, eval score).
+**Stage 4**: preference optimization — DPO (Direct Preference Optimization) trained
+from the SFT checkpoint using 35 hand-written preference pairs, plus a from-scratch
+minimal PPO-RLHF loop (Bradley-Terry reward model + clipped surrogate policy update).
 
 ## Table of contents
 
@@ -31,6 +31,13 @@ Later stages (planned) add preference optimization (DPO).
   - [What is QLoRA?](#what-is-qlora)
   - [Results](#results-1)
   - [What I learned (Stage 3)](#what-i-learned-stage-3)
+
+**Stage 4 — preference optimization (DPO + PPO-RLHF)**
+- [Stage 4: DPO and PPO-RLHF](#stage-4-dpo-and-ppo-rlhf)
+  - [What is DPO?](#what-is-dpo)
+  - [What is PPO-RLHF?](#what-is-ppo-rlhf)
+  - [Results](#results-2)
+  - [What I learned (Stage 4)](#what-i-learned-stage-4)
 
 ## Architecture
 
@@ -646,3 +653,124 @@ producing a single-weight model with zero inference overhead. Keeping the
 adapter separate (via `PeftModel`) allows runtime enable/disable but adds a
 small forward-pass overhead. For production deployment, merge; for
 experimentation, keep separate.
+
+---
+
+## Stage 4: DPO and PPO-RLHF
+
+Stage 4 aligns the SFT model using human preference data — 35 hand-written
+preference pairs across four Solidity/DeFi categories (vulnerability identification,
+fix suggestions, DeFi mechanics, protocol design). Each pair has a **chosen**
+(correct, complete) and **rejected** (plausible but wrong or incomplete) response.
+
+Two alignment methods are implemented from scratch:
+
+### What is DPO?
+
+**Direct Preference Optimization** (Rafailov et al. 2023) trains a policy directly
+from preference pairs without a separate reward model.
+
+The key insight: the optimal RLHF policy has a closed-form expression involving
+the reference model, so you can rewrite the RL objective as a supervised loss:
+
+```
+L_DPO = -E[ log σ( β · (log π_θ(y_w|x)/π_ref(y_w|x)
+                       - log π_θ(y_l|x)/π_ref(y_l|x)) ) ]
+```
+
+The log-ratio `log π_θ(y|x)/π_ref(y|x)` is the **implicit reward** — no reward
+model needed. `β=0.1` controls the KL penalty, keeping the policy close to the
+frozen SFT reference.
+
+Scripts: `scripts/dpo_train.py`, `scripts/dpo_eval.py`  
+Config: `configs/dpo/qwen2.5-0.5b-dpo.yaml`  
+Dataset: `data/dpo/` (35 train / 10 val / 15 eval pairs)  
+Explainer: [`docs/stage4/dpo_explainer.md`](docs/stage4/dpo_explainer.md)
+
+### What is PPO-RLHF?
+
+Classic **Proximal Policy Optimization RLHF** has two phases:
+
+**Phase 1 — Reward Model**: fine-tune a scalar head on the SFT backbone using
+Bradley-Terry loss: `-log σ(r_chosen − r_rejected)`. Converges to 100% preference
+accuracy on this dataset in 3 epochs.
+
+**Phase 2 — PPO policy update**: sample rollouts from the policy, score with
+the RM, compute advantages, update with a clipped surrogate objective + KL penalty:
+
+```
+L_PPO = -min(ratio·A, clip(ratio, 1±ε)·A) + β·KL(π‖π_ref)
+```
+
+Script: `scripts/ppo_train.py`  
+Checkpoints: `checkpoints/rm/rm_weights.pt`, `checkpoints/ppo/hf`
+
+### Results
+
+#### DPO — keyword coverage (15 eval examples)
+
+| Category | SFT | DPO | Δ |
+|---|---|---|---|
+| defi_mechanics | 48.0% | 44.0% | −4.0 pp |
+| fix | 10.0% | 10.0% | +0.0 pp |
+| protocol_design | 33.3% | 33.3% | +0.0 pp |
+| vulnerability_id | 15.0% | 20.0% | +5.0 pp |
+| **Overall** | **30.3%** | **30.3%** | **+0.0 pp** |
+
+Win-rate (DPO > SFT): **13.3%** wins, 73.3% draws, 13.3% losses.
+
+DPO training: **5.1 min**, 3 epochs, 27 optimizer steps, Apple M3 16 GB MPS, **$0**.
+
+Full report: [`docs/stage4/eval_report.md`](docs/stage4/eval_report.md)
+
+#### PPO-RLHF
+
+| Phase | Result |
+|---|---|
+| Reward model (Phase 1) | 100% preference accuracy by epoch 2 |
+| PPO policy (Phase 2) | 20 steps, KL stable (−0.05 to +0.002), no divergence |
+
+#### DPO training details
+
+| Hyperparameter | Value |
+|---|---|
+| Starting model | SFT checkpoint (`checkpoints/sft/hf`) |
+| Reference model | SFT checkpoint (frozen) |
+| β (KL weight) | 0.1 |
+| Learning rate | 5e-7 |
+| Epochs | 3 |
+| Preference pairs | 35 train / 10 val |
+| Hardware | Apple M3 16 GB / MPS |
+| Cost | $0 |
+
+### What I learned (Stage 4)
+
+**DPO works without a reward model** because the log-ratio between policy and
+reference implicitly encodes reward. The RLHF objective's optimal policy has a
+closed-form involving `exp(r/β)`, so you can substitute and derive a supervised
+loss directly from preference pairs. No rollouts, no value network, no PPO tuning.
+
+**β is the KL dial**. Small β (0.1) keeps the policy very close to SFT — it will
+only deviate as much as the preference data justifies. With 35 pairs that means
+almost no movement, which is why overall keyword coverage didn't change: the signal
+is too small to overcome the anchor. On larger datasets (thousands of pairs) DPO
+produces clear wins.
+
+**Two models, one GPU is tight**. Running both policy (trainable, MPS) and ref
+(frozen) simultaneously on a 16 GB unified memory system requires careful placement:
+ref on CPU (float32), policy on MPS (bf16). Same trick applies in PPO for the
+ref model, plus the reward model backbone also occupies memory.
+
+**PPO is harder to stabilize than DPO**. In this implementation alone we hit:
+- `nan` from `torch.std()` on a single-element tensor (unbiased denominator = 0)
+- `nan` from unclamped `exp(log_ratio)` overflowing bf16
+- dtype mismatch (bf16 backbone → float32 linear head) that MPS silently promoted but CPU caught
+- Progressive MPS memory fragmentation requiring `empty_cache()` every step
+
+DPO sidesteps all of this. For most practical alignment work on small models,
+DPO is the right default.
+
+**Reference model is load-bearing**. Without the frozen reference providing the
+baseline distribution, the DPO loss has no anchor — the policy could trivially
+minimize loss by assigning infinite log-prob to chosen responses without learning
+anything. The KL term (implicit in the log-ratio) is what keeps the model honest.

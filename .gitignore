@@ -19,6 +19,9 @@ venv/
 /data/tools/*
 !/data/tools/*.json
 !/data/tools/*.jsonl
+!/data/tool_dpo/
+/data/tool_dpo/*
+!/data/tool_dpo/*.jsonl
 *.bin
 *.npy
 

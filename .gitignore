@@ -7,11 +7,14 @@ __pycache__/
 venv/
 
 # Data artifacts (large, regenerable via scripts/)
-# Ignore everything in /data except the SFT dataset JSONL files (small, committed).
+# Ignore everything in /data except the SFT and DPO dataset JSONL files (small, committed).
 /data/*
 !/data/sft/
 /data/sft/*
 !/data/sft/*.jsonl
+!/data/dpo/
+/data/dpo/*
+!/data/dpo/*.jsonl
 *.bin
 *.npy
 

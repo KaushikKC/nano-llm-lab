@@ -1,0 +1,75 @@
+[
+  {
+    "name": "read_contract",
+    "description": "Read the source code of a Solidity smart contract from a local file path.",
+    "parameters": {
+      "path": {
+        "type": "string",
+        "description": "Relative or absolute path to the .sol file"
+      }
+    }
+  },
+  {
+    "name": "run_slither",
+    "description": "Run the Slither static analysis tool on a Solidity file and return detected vulnerabilities.",
+    "parameters": {
+      "path": {
+        "type": "string",
+        "description": "Path to the .sol file to analyse"
+      },
+      "detectors": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Optional list of specific detector names to run (e.g. reentrancy, uninitialized)"
+      }
+    }
+  },
+  {
+    "name": "search_vulnerability_db",
+    "description": "Search a database of known smart contract vulnerabilities and CVEs by keyword or pattern.",
+    "parameters": {
+      "query": {
+        "type": "string",
+        "description": "Search term, e.g. 'reentrancy', 'tx.origin', 'integer overflow'"
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Maximum number of results to return (default 5)"
+      }
+    }
+  },
+  {
+    "name": "get_contract_abi",
+    "description": "Fetch the ABI of a verified contract from Etherscan given its address and chain.",
+    "parameters": {
+      "address": {
+        "type": "string",
+        "description": "Ethereum contract address (0x...)"
+      },
+      "chain": {
+        "type": "string",
+        "description": "Chain name: mainnet, sepolia, arbitrum, polygon"
+      }
+    }
+  },
+  {
+    "name": "get_audit_report",
+    "description": "Retrieve a past security audit report for a protocol by name or address.",
+    "parameters": {
+      "protocol": {
+        "type": "string",
+        "description": "Protocol name (e.g. Uniswap, Aave) or contract address"
+      }
+    }
+  },
+  {
+    "name": "no_tool_needed",
+    "description": "Use this when no tool is required and you can answer directly from existing knowledge or context.",
+    "parameters": {
+      "reason": {
+        "type": "string",
+        "description": "Brief explanation of why no tool is needed"
+      }
+    }
+  }
+]

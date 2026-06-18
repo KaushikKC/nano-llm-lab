@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ruff
+        run: pip install ruff
+      - name: Lint
+        run: ruff check nanolab/ scripts/ tests/ --ignore E501,E402
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run unit tests (fast — no model downloads)
+        run: pytest -q tests/ -m "not slow"
+      - name: Smoke test — SFT dataset module
+        run: |
+          python - <<'EOF'
+          from nanolab.sft.chat_format import build_prompt
+          from nanolab.dpo.config import DPOTrainConfig, PPOTrainConfig
+          cfg = DPOTrainConfig()
+          assert cfg.beta == 0.1
+          assert cfg.epochs == 3
+          ppo = PPOTrainConfig()
+          assert ppo.clip_eps == 0.2
+          print("smoke test passed")
+          EOF
